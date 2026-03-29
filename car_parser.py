@@ -153,13 +153,6 @@ class CarParser:
         finally:
             if driver:
                 driver.quit()
-            
-        except Exception as e:
-            logger.error(f"Error parsing encar: {e}")
-            return None
-        finally:
-            if driver:
-                driver.quit()
     
     async def parse_kbchachacha(self, url: str) -> Optional[Dict]:
         """Парсинг kbchachacha.com"""
