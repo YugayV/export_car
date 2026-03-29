@@ -69,21 +69,44 @@ class CarParser:
             # Даем JS время на полную отрисовку всех данных
             await asyncio.sleep(5)
             
-            # 1. Интеллектуальный поиск цены
+            # 1. Интеллектуальный поиск цены и данных
             raw_price = '0'
+            brand = 'Unknown'
+            model = 'Unknown'
+            year = '2020'
             
-            # А. Попытка вытащить из мета-тегов (самый точный способ для Encar)
+            # А. Попытка вытащить данные из мета-тегов (самый точный способ для Encar)
             try:
+                # Название страницы часто содержит Марку и Модель
+                page_title = driver.title
+                if page_title and '-' in page_title:
+                    title_parts = page_title.split('-')[0].strip().split()
+                    if len(title_parts) >= 2:
+                        brand = title_parts[0]
+                        model = " ".join(title_parts[1:])
+                
                 og_desc = driver.execute_script("return document.querySelector('meta[property=\"og:description\"]').content")
                 # Ищем паттерн цены, учитывая возможные запятые (например, 2,500만원)
                 price_match = re.search(r'([\d,]+)\s*만원', og_desc)
                 if price_match:
                     raw_price = price_match.group(1).replace(',', '')
                     logger.info(f"Price found in meta tag: {raw_price}")
+                
+                # Ищем год в описании
+                year_match = re.search(r'(\d{2,4})년', og_desc)
+                if year_match:
+                    year = year_match.group(1)
             except:
                 pass
 
-            # Б. Если в мета-тегах нет, ищем по специфическим селекторам основной цены
+            # Б. Если в мета-тегах нет, ищем по специфическим селекторам
+            if brand == 'Unknown':
+                brand = self.get_text(driver, ['.car-brand', '.brand', '.make_nm', '.detail_title .brand'], 'Unknown')
+            if model == 'Unknown':
+                model = self.get_text(driver, ['.car-model', '.model', '.model_nm', '.detail_title .model'], 'Unknown')
+            if year == '2020':
+                year = self.get_text(driver, ['.car-year', '.year', '.reg_date', '.year_info', '.reg_dt'], '2020')
+
             clean_raw = raw_price.replace(',', '')
             if raw_price == '0' or (clean_raw.isdigit() and int(clean_raw) < 50):
                 raw_price = self.get_text(driver, [
@@ -91,8 +114,8 @@ class CarParser:
                     '.amt_prc .num', 
                     '.txt_price .num',
                     '.price_info .num', 
-                    '.detail_info .price',
-                    '.amt'
+                    '.amt',
+                    '.price'
                 ], '0')
             
             # В. Валидация и финальный поиск в тексте
@@ -112,9 +135,9 @@ class CarParser:
                         logger.info(f"Price corrected via text scan: {final_price_krw}")
 
             car_data = {
-                'brand': self.get_text(driver, ['.car-brand', '.brand', '.prod_title', '.name', '.make_nm', '.detail_title'], 'Hyundai'),
-                'model': self.get_text(driver, ['.car-model', '.model', '.detail_title', '.model_nm', '.prod_title'], 'Sonata'),
-                'year': self.get_text(driver, ['.car-year', '.year', '.reg_date', '.year_info', '.reg_dt', '.reg_year'], '2020'),
+                'brand': brand,
+                'model': model,
+                'year': year,
                 'price_krw': final_price_krw,
                 'engine_size': self.get_text(driver, ['.engine', '.engine-size', '.displacement', '.cc_info', '.displace', '.capacity'], '2000'),
                 'fuel_type': self.get_text(driver, ['.fuel', '.fuel-type', '.fuel_info', '.fuel_nm'], 'Gasoline'),

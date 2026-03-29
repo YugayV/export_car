@@ -147,6 +147,9 @@ class CarImportBot:
             country_map = {"russia": "Россию", "uzbekistan": "Узбекистан", "kazakhstan": "Казахстан"}
             country_name = country_map.get(country_code, country_code)
             
+            # Формируем доп. инфо от ИИ если есть
+            ai_details = f"\n\nℹ️ *Актуально на 2026:* \n_{result['ai_info']}_" if result.get('ai_info') else ""
+
             final_msg = (
                 f"📊 *Полная стоимость импорта в {country_name}:*\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -156,7 +159,7 @@ class CarImportBot:
                 f"♻️ *Утильсбор:* ${result['recycling_fee']:,.0f}\n"
                 f"📦 *Прочие расходы:* ${result['broker_fee'] + result['customs_fee'] + result['insurance']:,.0f}\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"💰 *ИТОГО:* `{result['total']:,.0f} USD`\n\n"
+                f"💰 *ИТОГО:* `{result['total']:,.0f} USD`{ai_details}\n\n"
                 f"🤖 *Рекомендация ИИ:* \n_{ai_recommendation}_\n\n"
                 f"📞 Связаться с менеджером для заказа: {COMPANY_INFO['telegram']}"
             )

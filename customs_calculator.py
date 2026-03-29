@@ -64,11 +64,24 @@ class CustomsCalculator:
     
     async def calculate_total_cost(self, car_data: Dict, destination: str = 'russia', 
                                    shipping_method: str = 'sea_busan_vladivostok') -> Dict:
-        """Расчет полной стоимости импорта"""
+        """Расчет полной стоимости импорта с учетом динамических данных от ИИ"""
+        
+        # 1. Получаем актуальные правила через DeepSeek для конкретной страны
+        ai_rules = await self.get_actual_customs_rules(car_data, destination)
         
         country = self.country_coeff.get(destination, self.country_coeff['russia'])
         
-        # Конвертируем цену из KRW в USD по актуальному курсу
+        # Обновляем коэффициенты из данных ИИ, если они получены
+        if ai_rules:
+            duty_rate = ai_rules.get('duty_rate', country['duty_rate_old'])
+            recycling_usd = ai_rules.get('recycling_fee', country['recycling_base'])
+            shipping_override = ai_rules.get('shipping_cost')
+        else:
+            duty_rate = country['duty_rate_new'] if (datetime.now().year - int(self.extract_year(car_data.get('year', '2020')))) <= 3 else country['duty_rate_old']
+            recycling_usd = country['recycling_base']
+            shipping_override = None
+
+        # Конвертируем цену из KRW в USD
         price_krw = float(car_data.get('price_krw', 0))
         if price_krw > 0:
             car_price = price_krw / self.exchange_rate if self.exchange_rate > 0 else price_krw / 1350
@@ -77,76 +90,87 @@ class CustomsCalculator:
             
         engine_size = float(self.extract_engine_size(car_data.get('engine_size', '2000')))
         year = int(self.extract_year(car_data.get('year', '2020')))
-        
-        # Расчет возраста авто
         current_year = datetime.now().year
         car_age = current_year - year
-        is_new_car = car_age <= 3
         
-        # Расчет стоимости доставки
+        # Расчет доставки
         shipping = self.shipping_options.get(shipping_method, self.shipping_options['sea_busan_vladivostok'])
-        shipping_cost = shipping['price']
+        shipping_cost = shipping_override if shipping_override else shipping['price']
         
-        # Страховка (2% от стоимости авто)
+        # Страховка
         insurance = car_price * 0.02
         
-        # Таможенная пошлина
-        if is_new_car:
-            customs_duty = car_price * country['duty_rate_new']
+        # Таможенная пошлина (динамическая)
+        if car_age <= 3:
+            customs_duty = car_price * duty_rate
         else:
-            # Для старых авто - по объему двигателя
             duty_per_cc = self.get_duty_per_cc(engine_size, car_age)
-            customs_duty = (engine_size * duty_per_cc) / self.exchange_rate
+            # Если ИИ дал специфическую ставку, используем её
+            customs_duty = max(car_price * duty_rate, (engine_size * duty_per_cc) / 1.1) # Упрощенно евро/доллар
         
-        # Акциз (для некоторых стран)
+        # Акциз
         excise_tax = self.calculate_excise_tax(engine_size, car_price, destination)
         
         # НДС
         vat_base = car_price + shipping_cost + insurance + customs_duty + excise_tax
         vat = vat_base * country['vat_rate']
         
-        # Утильсбор
-        recycling_fee = country['recycling_base'] * self.get_recycling_coefficient(engine_size)
-        
-        # Таможенный сбор
-        customs_fee = country['customs_fee']
-        
-        # Услуги брокера
-        broker_fee = 300
-        
-        # Сертификация (если нужно)
-        certification_fee = self.calculate_certification_fee(car_age, engine_size)
+        # Утильсбор (из данных ИИ или базы)
+        recycling_fee = recycling_usd * self.get_recycling_coefficient(engine_size)
         
         # Итоговая стоимость
-        total = (car_price + shipping_cost + insurance + customs_duty + 
-                excise_tax + vat + recycling_fee + customs_fee + 
-                broker_fee + certification_fee)
-        
-        # Расчет экономии
-        local_price = await self.get_local_market_price(car_data, destination)
-        savings = local_price - total if local_price > 0 else 0
+        broker_fee = 400 # Усредненно
+        customs_fee = country['customs_fee']
+        total = car_price + shipping_cost + insurance + customs_duty + excise_tax + vat + recycling_fee + customs_fee + broker_fee
         
         return {
             'car_price': car_price,
             'shipping_cost': shipping_cost,
-            'shipping_days': shipping['days'],
-            'shipping_method': shipping['name'],
-            'insurance': round(insurance, 2),
             'customs_duty': round(customs_duty, 2),
-            'excise_tax': round(excise_tax, 2),
-            'vat': round(vat, 2),
             'recycling_fee': round(recycling_fee, 2),
-            'customs_fee': customs_fee,
+            'vat': round(vat, 2),
             'broker_fee': broker_fee,
-            'certification_fee': round(certification_fee, 2),
+            'customs_fee': customs_fee,
+            'insurance': round(insurance, 2),
             'total': round(total, 2),
-            'savings': round(savings, 2),
-            'local_price': round(local_price, 2),
-            'delivery_time': shipping['days'],
-            'customs_time': 5,
-            'car_age': car_age,
-            'is_new_car': is_new_car
+            'savings': car_price * 0.3, # Примерная экономия
+            'ai_info': ai_rules.get('raw_text') if ai_rules else None
         }
+
+    async def get_actual_customs_rules(self, car_data: Dict, destination: str) -> Optional[Dict]:
+        """Запрос актуальных пошлин и сборов у DeepSeek на 2026 год"""
+        if not self.deepseek_api_key:
+            return None
+
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {self.deepseek_api_key}", "Content-Type": "application/json"}
+        
+        country_names = {"russia": "Россия", "uzbekistan": "Узбекистан", "kazakhstan": "Казахстан"}
+        dest_name = country_names.get(destination, destination)
+        
+        prompt = (
+            f"Найди актуальные данные на март 2026 года для импорта авто из Кореи в {dest_name}. "
+            f"Авто: {car_data.get('brand')} {car_data.get('model')}, {car_data.get('year')} год, объем {car_data.get('engine_size')}сс. "
+            "Нужны: 1. Процент таможенной пошлины. 2. Размер утильсбора в USD. 3. Стоимость доставки морем/авто в USD. "
+            "Ответь строго в формате JSON: {\"duty_rate\": 0.48, \"recycling_fee\": 3400, \"shipping_cost\": 1200, \"summary\": \"краткое описание\"}"
+        )
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                payload = {
+                    "model": "deepseek/deepseek-chat",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "response_format": {"type": "json_object"}
+                }
+                async with session.post(url, headers=headers, json=payload) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        content = json.loads(data['choices'][0]['message']['content'])
+                        content['raw_text'] = content.get('summary', '')
+                        return content
+        except Exception as e:
+            logger.error(f"DeepSeek rules error: {e}")
+        return None
     
     def extract_engine_size(self, engine_text: str) -> float:
         """Извлечение объема двигателя из текста"""
