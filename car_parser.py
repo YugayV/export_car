@@ -45,7 +45,7 @@ class CarParser:
         return domain
     
     async def parse_encar(self, url: str) -> Optional[Dict]:
-        """Парсинг encar.com (Mobile & Desktop) с глубоким поиском данных"""
+        """Парсинг encar.com (Mobile & Desktop) с интеллектуальным поиском цены"""
         chrome_options = Options()
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
@@ -59,27 +59,51 @@ class CarParser:
             driver.set_window_size(375, 812) # Мобильный размер окна
             driver.get(url)
             
-            # Ожидаем появления любого элемента с ценой (макс 15 сек)
+            # Ожидаем появления любого элемента (макс 15 сек)
             wait = WebDriverWait(driver, 15)
             try:
-                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".price, .car-price, .amt_prc, .price_amount, .txt_price, .amt, .price_info")))
+                wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             except:
-                logger.warning(f"Wait timeout for price on {url}")
+                logger.warning(f"Wait timeout for body on {url}")
 
             # Даем JS время на полную отрисовку всех данных
-            await asyncio.sleep(4)
+            await asyncio.sleep(5)
             
-            # 1. Пробуем получить текст через селекторы
-            raw_price = self.get_text(driver, ['.price', '.car-price', '.amt_prc', '.price_amount', '.txt_price', '.amt', '.price_info'], '0')
+            # 1. Интеллектуальный поиск цены
+            raw_price = '0'
             
-            # 2. Если через селекторы цена 0, пробуем найти её регулярным выражением во всем тексте страницы (InnerText)
-            if raw_price == '0' or not raw_price:
-                page_text = driver.execute_script("return document.body.innerText")
-                # Ищем паттерн "число + 만원" (например, 2500만원)
-                price_match = re.search(r'(\d{2,5})\s*만원', page_text)
+            # А. Попытка вытащить из мета-тегов (самый точный способ для Encar)
+            try:
+                # Пытаемся найти через execute_script для надежности
+                og_desc = driver.execute_script("return document.querySelector('meta[property=\"og:description\"]').content")
+                # Ищем паттерн "цена + 만원" (например, 2500만원)
+                price_match = re.search(r'(\d{2,5})\s*만원', og_desc)
                 if price_match:
                     raw_price = price_match.group(1)
-                    logger.info(f"Price found via regex in innerText: {raw_price}")
+                    logger.info(f"Price found in meta tag: {raw_price}")
+            except:
+                pass
+
+            # Б. Если в мета-тегах нет, пробуем селекторы основной цены
+            if raw_price == '0':
+                raw_price = self.get_text(driver, [
+                    '.price_amount', 
+                    '.amt_prc', 
+                    '.txt_price', 
+                    '.price_info .num', 
+                    '.detail_info .price',
+                    '.amt'
+                ], '0')
+            
+            # В. Если всё еще 0 или слишком низкая (менее 100 манов - это $700, вряд ли Соната 2020), ищем в тексте
+            if raw_price == '0' or (raw_price.isdigit() and int(raw_price) < 100):
+                page_text = driver.execute_script("return document.body.innerText")
+                # Ищем все вхождения "число + 만원"
+                all_prices = re.findall(r'(\d{3,5})\s*만원', page_text)
+                if all_prices:
+                    # Берем максимальное число (обычно это цена авто, а не доп. платежей)
+                    raw_price = max(all_prices, key=int)
+                    logger.info(f"Price found in text (max pattern): {raw_price}")
 
             car_data = {
                 'brand': self.get_text(driver, ['.car-brand', '.brand', '.prod_title', '.name', '.make_nm', '.detail_title'], 'Hyundai'),
@@ -178,11 +202,14 @@ class CarParser:
     
     def extract_price_krw(self, price_text: str) -> float:
         """Извлечение чистой цены в вонах (KRW)"""
+        # Очищаем текст от лишних символов
         price_digits = re.sub(r'[^\d]', '', str(price_text))
         try:
             if price_digits:
                 val = float(price_digits)
-                # Если цена на Encar в 'man-won' (обычно < 100,000)
+                # На Encar цены обычно в 'man-won' (десятитысячных вонах). 
+                # Если число в пределах 10-100,000 - это точно man-won.
+                # Машины стоят от 100 манов (1.3 млн вон) до 50,000 манов (650 млн вон).
                 if val < 100000:
                     return val * 10000
                 return val
