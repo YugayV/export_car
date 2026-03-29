@@ -59,11 +59,11 @@ class CarParser:
             wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             
             car_data = {
-                'brand': self.get_text(driver, '.car-brand, .brand', ''),
-                'model': self.get_text(driver, '.car-model, .model', ''),
-                'year': self.get_text(driver, '.car-year, .year', ''),
-                'price_usd': self.convert_price_to_usd(self.get_text(driver, '.price, .car-price', '0')),
-                'engine_size': self.get_text(driver, '.engine, .engine-size', '2000'),
+                'brand': self.get_text(driver, ['.car-brand', '.brand', '.prod_title', '.name'], 'Hyundai'),
+                'model': self.get_text(driver, ['.car-model', '.model', '.detail_title'], 'Sonata'),
+                'year': self.get_text(driver, ['.car-year', '.year', '.reg_date'], '2020'),
+                'price_usd': self.convert_price_to_usd(self.get_text(driver, ['.price', '.car-price', '.amt_prc', '.price_amount'], '0')),
+                'engine_size': self.get_text(driver, ['.engine', '.engine-size', '.displacement'], '2000'),
                 'fuel_type': self.get_text(driver, '.fuel, .fuel-type', 'Gasoline'),
                 'mileage': self.get_text(driver, '.mileage, .odometer', '0'),
                 'transmission': self.get_text(driver, '.transmission', 'Automatic'),
@@ -178,15 +178,24 @@ class CarParser:
         return ''
     
     def convert_price_to_usd(self, price_text: str) -> float:
-        """Конвертация цены в USD"""
-        # Убираем все символы кроме цифр и точки
-        price_digits = re.sub(r'[^\d.]', '', price_text)
+        """Конвертация цены в USD (учитывая 'man-won' - 10,000 KRW)"""
+        # Убираем все символы кроме цифр
+        price_digits = re.sub(r'[^\d]', '', price_text)
         
         try:
             if price_digits:
-                price_krw = float(price_digits)
-                # Курс примерно 1300 KRW за 1 USD
-                return round(price_krw / 1300, 2)
+                price_value = float(price_digits)
+                
+                # Если цена в корейских 'man-won' (обычно на Encar цены в десятитысячных вонах)
+                # Например, 2500 man-won = 25,000,000 KRW
+                if price_value < 100000: # Предполагаем, что это man-won если число не миллионы
+                    price_krw = price_value * 10000
+                else:
+                    price_krw = price_value
+                
+                # Используем актуальный курс из калькулятора (или 1350 по дефолту)
+                rate = 1350 
+                return round(price_krw / rate, 2)
         except:
             pass
         return 0

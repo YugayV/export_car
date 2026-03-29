@@ -67,49 +67,98 @@ class CarImportBot:
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Process incoming text messages"""
         text = update.message.text
-        if re.search(r'encar\.com', text):
+        # Регулярное выражение для Encar или Daum (часто ссылки в Kakao приходят через daum)
+        if re.search(r'encar\.com|daumcdn\.net', text):
             await self.process_url(update, context, text)
         else:
             await update.message.reply_text("Please send a valid encar.com link.")
 
     async def process_url(self, update, context, url):
-        """Analyze Encar link and show price"""
+        """Analyze Encar link and ask for destination country"""
+        user_id = update.effective_user.id
         await update.message.reply_text("🔍 Analyzing link... Please wait.")
+        
         try:
             car_data = await self.parser.parse_from_url(url)
-            if car_data:
-                await update.message.reply_text(
-                    f"✅ *Found:* {car_data['brand']} {car_data['model']}\n"
+            if car_data and car_data.get('price_usd', 0) > 0:
+                # Сохраняем данные в сессию пользователя
+                self.user_sessions[user_id] = {'car_data': car_data}
+                
+                # Показываем инфо об авто и спрашиваем страну
+                msg = (
+                    f"✅ *Car Found:* {car_data['brand']} {car_data['model']}\n"
                     f"📅 *Year:* {car_data['year']}\n"
                     f"💰 *Price in Korea:* ${car_data['price_usd']:,.0f}\n\n"
-                    "Calculating total import cost...",
-                    parse_mode='Markdown'
+                    "🌍 *Select Destination Country:* "
                 )
-                # Расчет стоимости
-                result = await self.calculator.calculate_total_cost(car_data, destination='russia')
+                
+                keyboard = [
+                    [InlineKeyboardButton("🇷🇺 Russia", callback_data="dest_russia")],
+                    [InlineKeyboardButton("🇺🇿 Uzbekistan", callback_data="dest_uzbekistan")],
+                    [InlineKeyboardButton("🇰🇿 Kazakhstan", callback_data="dest_kazakhstan")]
+                ]
                 await update.message.reply_text(
-                    f"📊 *Total Cost to Russia:*\n"
-                    f"💵 Total: ${result['total']:,.0f}\n"
-                    f"⚓ Shipping: ${result['shipping_cost']:,.0f}\n"
-                    f"🛡️ Customs: ${result['customs_duty']:,.0f}",
-                    parse_mode='Markdown'
+                    msg, 
+                    parse_mode='Markdown', 
+                    reply_markup=InlineKeyboardMarkup(keyboard)
                 )
             else:
-                await update.message.reply_text("❌ Could not extract data from this link.")
+                await update.message.reply_text(
+                    "❌ *Could not extract car price.*\n"
+                    "The link might be invalid or car is sold. Please try another Encar link.",
+                    parse_mode='Markdown'
+                )
         except Exception as e:
             logger.error(f"Error processing URL: {e}")
             await update.message.reply_text("❌ Error processing link. Please try again.")
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle button clicks"""
+        """Handle button clicks and calculate final price"""
         query = update.callback_query
+        user_id = update.effective_user.id
         await query.answer()
         
-        if query.data == "contact":
+        data = query.data
+        
+        if data.startswith("dest_"):
+            country_code = data.replace("dest_", "")
+            session = self.user_sessions.get(user_id)
+            
+            if not session or 'car_data' not in session:
+                await query.edit_message_text("❌ Session expired. Please send the link again.")
+                return
+            
+            car_data = session['car_data']
+            
+            # Расчет стоимости для выбранной страны
+            result = await self.calculator.calculate_total_cost(car_data, destination=country_code)
+            
+            # Получаем рекомендацию от DeepSeek
+            ai_recommendation = await self.calculator.get_ai_recommendation(car_data, result, country_code)
+            
+            country_name = "Russia" if country_code == "russia" else "Uzbekistan" if country_code == "uzbekistan" else "Kazakhstan"
+            
+            final_msg = (
+                f"📊 *Full Import Cost to {country_name}:*\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🚗 *Car Price:* ${car_data['price_usd']:,.0f}\n"
+                f"⚓ *Shipping:* ${result['shipping_cost']:,.0f}\n"
+                f"🛡️ *Customs Duty:* ${result['customs_duty']:,.0f}\n"
+                f"♻️ *Recycling Fee:* ${result['recycling_fee']:,.0f}\n"
+                f"📦 *Other Fees:* ${result['broker_fee'] + result['customs_fee'] + result['insurance']:,.0f}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💰 *TOTAL:* `${result['total']:,.0f}`\n\n"
+                f"🤖 *AI Recommendation:* \n_{ai_recommendation}_\n\n"
+                f"📞 Contact manager to order: {COMPANY_INFO['telegram']}"
+            )
+            
+            await query.edit_message_text(final_msg, parse_mode='Markdown')
+            
+        elif data == "contact":
             await query.message.reply_text(f"📞 Contact our manager: {COMPANY_INFO['telegram']}")
-        elif query.data == "about":
+        elif data == "about":
             await query.message.reply_text(f"ℹ️ {COMPANY_INFO['address']}")
-        elif query.data == "new_calculation":
+        elif data == "new_calculation":
             await query.message.reply_text("Please send me an encar.com car link.")
 
 def main():

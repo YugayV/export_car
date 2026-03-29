@@ -2,14 +2,16 @@ import aiohttp
 import json
 from datetime import datetime
 import logging
-from typing import Dict
+from typing import Dict, Optional
+import os
 
 logger = logging.getLogger(__name__)
 
 class CustomsCalculator:
     def __init__(self):
         # Курсы валют
-        self.exchange_rate = 1300  # KRW/USD
+        self.exchange_rate = 1350  # KRW/USD default
+        self.deepseek_api_key = os.getenv('DEEPSEEK_API_KEY')
         
         # Коэффициенты для разных стран
         self.country_coeff = {
@@ -231,14 +233,84 @@ class CustomsCalculator:
         return car_price * markup
     
     async def update_exchange_rate(self):
-        """Обновление курса валют"""
+        """Обновление курса валют с проверкой через DeepSeek"""
         try:
             async with aiohttp.ClientSession() as session:
+                # 1. Получаем базовый курс из API
                 async with session.get('https://api.exchangerate-api.com/v4/latest/USD') as response:
                     data = await response.json()
-                    # Обновляем курс KRW
                     if 'KRW' in data.get('rates', {}):
                         self.exchange_rate = data['rates']['KRW']
-                        logger.info(f"Exchange rate updated: 1 USD = {self.exchange_rate} KRW")
+                        logger.info(f"Base rate updated: 1 USD = {self.exchange_rate} KRW")
+                
+                # 2. Если есть API ключ DeepSeek, запрашиваем подтверждение и прогноз
+                if self.deepseek_api_key:
+                    verification = await self.verify_rate_with_deepseek(session)
+                    if verification:
+                        logger.info(f"DeepSeek verification: {verification}")
         except Exception as e:
             logger.error(f"Error updating exchange rate: {e}")
+
+    async def verify_rate_with_deepseek(self, session: aiohttp.ClientSession) -> Optional[str]:
+        """Запрос к DeepSeek для проверки курса и получения рекомендаций"""
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.deepseek_api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        prompt = (
+            f"Current market rate is 1 USD = {self.exchange_rate} KRW. "
+            "Verify if this is accurate and provide a brief recommendation (1-2 sentences) "
+            "for a car importer from Korea. Should they buy now or wait? "
+            "Answer in Russian."
+        )
+        
+        payload = {
+            "model": "deepseek/deepseek-chat",
+            "messages": [{"role": "user", "content": prompt}]
+        }
+        
+        try:
+            async with session.post(url, headers=headers, json=payload) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    return result['choices'][0]['message']['content']
+        except Exception as e:
+            logger.error(f"DeepSeek API error: {e}")
+        return None
+
+    async def get_ai_recommendation(self, car_data: Dict, result: Dict, destination: str) -> str:
+        """Получение персональной рекомендации от DeepSeek для конкретного авто"""
+        if not self.deepseek_api_key:
+            return "Рекомендуется к покупке после проверки технического состояния."
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = "https://openrouter.ai/api/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {self.deepseek_api_key}",
+                    "Content-Type": "application/json"
+                }
+                
+                prompt = (
+                    f"Автомобиль: {car_data['brand']} {car_data['model']} {car_data['year']} года. "
+                    f"Цена в Корее: ${car_data['price_usd']}. "
+                    f"Итоговая стоимость с доставкой и пошлиной в {destination}: ${result['total']}. "
+                    f"Экономия по сравнению с рынком: ${result['savings']}. "
+                    "Дай краткий совет (до 200 символов) на русском языке: выгодно ли это предложение "
+                    "с учетом текущего курса воны и таможенных правил."
+                )
+                
+                payload = {
+                    "model": "deepseek/deepseek-chat",
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+                
+                async with session.post(url, headers=headers, json=payload) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return data['choices'][0]['message']['content']
+        except:
+            pass
+        return "Предложение выглядит конкурентным. Рекомендуем заказать осмотр."
