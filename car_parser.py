@@ -45,12 +45,12 @@ class CarParser:
         return domain
     
     async def parse_encar(self, url: str) -> Optional[Dict]:
-        """Парсинг encar.com (Mobile & Desktop)"""
+        """Парсинг encar.com (Mobile & Desktop) с глубоким поиском данных"""
         chrome_options = Options()
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
-        # Имитируем реальный мобильный браузер
+        # Имитируем реальный мобильный браузер (iPhone)
         chrome_options.add_argument('user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/04.1')
         
         driver = None
@@ -59,29 +59,41 @@ class CarParser:
             driver.set_window_size(375, 812) # Мобильный размер окна
             driver.get(url)
             
-            # Ожидаем появления цены (макс 15 сек)
+            # Ожидаем появления любого элемента с ценой (макс 15 сек)
             wait = WebDriverWait(driver, 15)
             try:
-                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".price, .car-price, .amt_prc, .price_amount, .txt_price, .price_info")))
+                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".price, .car-price, .amt_prc, .price_amount, .txt_price, .amt, .price_info")))
             except:
                 logger.warning(f"Wait timeout for price on {url}")
 
-            # Даем JS время на отрисовку
-            await asyncio.sleep(3)
+            # Даем JS время на полную отрисовку всех данных
+            await asyncio.sleep(4)
             
+            # 1. Пробуем получить текст через селекторы
+            raw_price = self.get_text(driver, ['.price', '.car-price', '.amt_prc', '.price_amount', '.txt_price', '.amt', '.price_info'], '0')
+            
+            # 2. Если через селекторы цена 0, пробуем найти её регулярным выражением во всем тексте страницы (InnerText)
+            if raw_price == '0' or not raw_price:
+                page_text = driver.execute_script("return document.body.innerText")
+                # Ищем паттерн "число + 만원" (например, 2500만원)
+                price_match = re.search(r'(\d{2,5})\s*만원', page_text)
+                if price_match:
+                    raw_price = price_match.group(1)
+                    logger.info(f"Price found via regex in innerText: {raw_price}")
+
             car_data = {
                 'brand': self.get_text(driver, ['.car-brand', '.brand', '.prod_title', '.name', '.make_nm', '.detail_title'], 'Hyundai'),
                 'model': self.get_text(driver, ['.car-model', '.model', '.detail_title', '.model_nm', '.prod_title'], 'Sonata'),
-                'year': self.get_text(driver, ['.car-year', '.year', '.reg_date', '.year_info', '.reg_dt'], '2020'),
-                'price_usd': self.convert_price_to_usd(self.get_text(driver, ['.price', '.car-price', '.amt_prc', '.price_amount', '.txt_price', '.price_info'], '0')),
-                'engine_size': self.get_text(driver, ['.engine', '.engine-size', '.displacement', '.cc_info', '.displace'], '2000'),
+                'year': self.get_text(driver, ['.car-year', '.year', '.reg_date', '.year_info', '.reg_dt', '.reg_year'], '2020'),
+                'price_usd': self.convert_price_to_usd(raw_price),
+                'engine_size': self.get_text(driver, ['.engine', '.engine-size', '.displacement', '.cc_info', '.displace', '.capacity'], '2000'),
                 'fuel_type': self.get_text(driver, ['.fuel', '.fuel-type', '.fuel_info', '.fuel_nm'], 'Gasoline'),
-                'mileage': self.get_text(driver, ['.mileage', '.odometer', '.mileage_info', '.km_info'], '0'),
-                'transmission': self.get_text(driver, ['.transmission', '.gear_info'], 'Automatic'),
+                'mileage': self.get_text(driver, ['.mileage', '.odometer', '.mileage_info', '.km_info', '.mile'], '0'),
+                'transmission': self.get_text(driver, ['.transmission', '.gear_info', '.gear_nm'], 'Automatic'),
                 'source': 'encar.com'
             }
             
-            # Очистка данных
+            # Очистка и валидация данных
             car_data['engine_size'] = self.extract_numbers(car_data['engine_size'])
             car_data['mileage'] = self.extract_numbers(car_data['mileage'])
             car_data['year'] = self.extract_year_clean(car_data['year'])
