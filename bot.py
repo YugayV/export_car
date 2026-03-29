@@ -1,5 +1,5 @@
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, BotCommand
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, 
     ContextTypes, CallbackQueryHandler, filters
@@ -39,18 +39,31 @@ class CarImportBot:
             f"🚗 *Добро пожаловать в Car Import Bot, {user.first_name}!*\n\n"
             "Я помогу вам рассчитать полную стоимость импорта автомобиля из Кореи.\n\n"
             "1️⃣ Пришлите мне ссылку на [encar.com](https://www.encar.com)\n"
-            "2️⃣ Или воспользуйтесь кнопками ниже для информации.\n\n"
-            "Используйте /help для получения инструкций."
+            "2️⃣ Или воспользуйтесь меню ниже."
         )
-        keyboard = [
+        
+        # Инлайн кнопки для приветственного сообщения
+        inline_keyboard = [
             [InlineKeyboardButton("💰 Рассчитать авто", callback_data="new_calculation")],
-            [InlineKeyboardButton("📞 Связаться с менеджером", callback_data="contact")],
-            [InlineKeyboardButton("ℹ️ О нас", callback_data="about")]
+            [InlineKeyboardButton("📞 Связаться", callback_data="contact")]
         ]
+        
+        # Постоянные кнопки внизу экрана (Reply Keyboard)
+        reply_keyboard = [
+            [KeyboardButton("🚗 Рассчитать авто"), KeyboardButton("📈 Анализ рынка")],
+            [KeyboardButton("📞 Контакты"), KeyboardButton("ℹ️ О нас")]
+        ]
+        
         await update.message.reply_text(
             welcome_message, 
             parse_mode='Markdown', 
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            reply_markup=InlineKeyboardMarkup(inline_keyboard)
+        )
+        
+        # Отправляем отдельное сообщение с постоянным меню
+        await update.message.reply_text(
+            "Используйте кнопки меню для навигации:",
+            reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True, persistent=True)
         )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,13 +78,28 @@ class CarImportBot:
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка входящих текстовых сообщений"""
+        """Обработка входящих текстовых сообщений и кнопок меню"""
         text = update.message.text
-        # Регулярное выражение для Encar или Daum (часто ссылки в Kakao приходят через daum)
+        
+        # Обработка кнопок Reply Keyboard
+        if text == "🚗 Рассчитать авто":
+            await update.message.reply_text("Пожалуйста, пришлите ссылку на автомобиль с encar.com.")
+            return
+        elif text == "📈 Анализ рынка":
+            await update.message.reply_text("Функция анализа рынка временно недоступна.")
+            return
+        elif text == "📞 Контакты":
+            await update.message.reply_text(f"📧 Email для заказа: {COMPANY_INFO['email']}\n📱 Тел: {COMPANY_INFO['phone']}")
+            return
+        elif text == "ℹ️ О нас":
+            await update.message.reply_text(f"ℹ️ Адрес: {COMPANY_INFO['address']}")
+            return
+
+        # Регулярное выражение для Encar или Daum
         if re.search(r'encar\.com|daumcdn\.net', text):
             await self.process_url(update, context, text)
         else:
-            await update.message.reply_text("Пожалуйста, пришлите корректную ссылку на encar.com.")
+            await update.message.reply_text("Пожалуйста, выберите действие в меню или пришлите ссылку на encar.com.")
 
     async def process_url(self, update, context, url):
         """Анализ ссылки Encar и запрос страны назначения"""
@@ -187,7 +215,13 @@ def main():
         
         async def post_init(application: Application):
             await bot.calculator.update_exchange_rate()
-            logger.info("Exchange rate updated during post_init")
+            # Устанавливаем список команд в меню кнопки "Menu"
+            await application.bot.set_my_commands([
+                BotCommand("start", "Запустить бота"),
+                BotCommand("help", "Инструкция"),
+                BotCommand("about", "О компании")
+            ])
+            logger.info("Bot initialized and commands set")
 
         application = (
             Application.builder()

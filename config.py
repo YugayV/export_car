@@ -44,10 +44,6 @@ COMPANY_INFO = {
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 DEEPSEEK_MODEL = "deepseek/deepseek-chat"
 
-# Настройки DeepSeek (OpenRouter)
-DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
-DEEPSEEK_MODEL = "deepseek/deepseek-chat"
-
 # Параметры доставки
 SHIPPING_PORTS = {
     "busan_vladivostok": {"price": 800, "days": 10},
