@@ -35,8 +35,8 @@ DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 COMPANY_INFO = {
     "name": "Korean Auto Export Co.",
     "phone": "+82 10-5512-1710",
-    "email": os.getenv('COMPANY_EMAIL', 'vamp.09.94@gmail.com'),
-    "telegram": "@koreanautobot",
+    "email": "vamp.09.94@gmail.com",
+    "telegram": "vamp.09.94@gmail.com",
     "address": os.getenv('COMPANY_ADDRESS', 'Sosan')
 }
 

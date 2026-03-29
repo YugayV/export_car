@@ -153,7 +153,9 @@ class CarImportBot:
             final_msg = (
                 f"📊 *Полная стоимость импорта в {country_name}:*\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🚗 *Цена авто:* ${result['car_price']:,.0f}\n"
+                f"🚗 *Авто:* {car_data['brand']} {car_data['model']}\n"
+                f"📅 *Год:* {car_data['year']}\n"
+                f"💵 *Цена авто:* ${result['car_price']:,.0f}\n"
                 f"⚓ *Доставка:* ${result['shipping_cost']:,.0f}\n"
                 f"🛡️ *Таможенная пошлина:* ${result['customs_duty']:,.0f}\n"
                 f"♻️ *Утильсбор:* ${result['recycling_fee']:,.0f}\n"
@@ -161,7 +163,7 @@ class CarImportBot:
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"💰 *ИТОГО:* `{result['total']:,.0f} USD`{ai_details}\n\n"
                 f"🤖 *Рекомендация ИИ:* \n_{ai_recommendation}_\n\n"
-                f"📞 *Для заказа:* {COMPANY_INFO['telegram']}\n"
+                f"📧 *Email для заказа:* {COMPANY_INFO['email']}\n"
                 f"📱 *WhatsApp/Tel:* {COMPANY_INFO['phone']}"
             )
             

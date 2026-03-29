@@ -78,7 +78,7 @@ class CarParser:
             # А. Попытка вытащить данные из мета-тегов и заголовка (самый точный способ)
             try:
                 # 1. Проверяем og:title - там обычно "Марка Модель - Encar"
-                og_title = driver.execute_script("return document.querySelector('meta[property=\"og:title\"]').content")
+                og_title = driver.execute_script("return document.querySelector('meta[property=\"og:title\"]')?.content")
                 if og_title and 'Encar' in og_title:
                     clean_title = og_title.split('-')[0].strip()
                     title_parts = clean_title.split()
@@ -86,7 +86,22 @@ class CarParser:
                         brand = title_parts[0]
                         model = " ".join(title_parts[1:])
                 
-                # 2. Если все еще Unknown, пробуем заголовок страницы
+                # 2. Если все еще Unknown, пробуем вытащить из JSON-LD или скриптов Encar
+                if brand == 'Unknown':
+                    script_data = driver.execute_script("""
+                        let data = {};
+                        // Попытка найти данные в глобальных переменных Encar
+                        if (window.carDetail) {
+                            data.brand = window.carDetail.makeNm;
+                            data.model = window.carDetail.modelNm;
+                        }
+                        return data;
+                    """)
+                    if script_data.get('brand'):
+                        brand = script_data['brand']
+                        model = script_data.get('model', 'Unknown')
+
+                # 3. Если все еще Unknown, пробуем заголовок страницы
                 if brand == 'Unknown':
                     page_title = driver.title
                     if page_title and '-' in page_title:
