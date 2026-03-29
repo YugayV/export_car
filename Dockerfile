@@ -18,8 +18,12 @@ RUN apt-get update && apt-get install -y \
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Создаем не-root пользователя
-RUN useradd -m botuser
+# Создаем необходимые директории и пользователя
+RUN mkdir -p logs data && \
+    useradd -m botuser && \
+    chown -R botuser:botuser /app
+
+# Переключаемся на не-root пользователя
 USER botuser
 
 # Копируем зависимости и устанавливаем их
@@ -29,9 +33,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Копируем все файлы проекта
 COPY --chown=botuser:botuser . .
-
-# Создаем необходимые директории
-RUN mkdir -p logs data
 
 # Запускаем бота
 CMD ["python", "bot.py"]
