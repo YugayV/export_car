@@ -37,9 +37,13 @@ class CarParser:
             return None
     
     def extract_domain(self, url: str) -> str:
-        """Извлечение домена из URL"""
-        match = re.search(r'https?://(?:www\.)?([^/]+)', url)
-        return match.group(1) if match else ''
+        """Извлечение основного домена из URL (включая мобильные версии)"""
+        match = re.search(r'https?://(?:www\.|fem\.)?([^/]+)', url)
+        domain = match.group(1) if match else ''
+        # Если это мобильная версия encar, возвращаем основной домен для маппинга
+        if 'encar.com' in domain:
+            return 'encar.com'
+        return domain
     
     async def parse_encar(self, url: str) -> Optional[Dict]:
         """Парсинг encar.com"""
@@ -58,14 +62,17 @@ class CarParser:
             # Ожидаем загрузки страницы
             wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             
+            # Дополнительная задержка для JS на мобильной версии
+            await asyncio.sleep(2)
+            
             car_data = {
-                'brand': self.get_text(driver, ['.car-brand', '.brand', '.prod_title', '.name'], 'Hyundai'),
-                'model': self.get_text(driver, ['.car-model', '.model', '.detail_title'], 'Sonata'),
-                'year': self.get_text(driver, ['.car-year', '.year', '.reg_date'], '2020'),
-                'price_usd': self.convert_price_to_usd(self.get_text(driver, ['.price', '.car-price', '.amt_prc', '.price_amount'], '0')),
-                'engine_size': self.get_text(driver, ['.engine', '.engine-size', '.displacement'], '2000'),
-                'fuel_type': self.get_text(driver, '.fuel, .fuel-type', 'Gasoline'),
-                'mileage': self.get_text(driver, '.mileage, .odometer', '0'),
+                'brand': self.get_text(driver, ['.car-brand', '.brand', '.prod_title', '.name', '.make_nm'], 'Hyundai'),
+                'model': self.get_text(driver, ['.car-model', '.model', '.detail_title', '.model_nm'], 'Sonata'),
+                'year': self.get_text(driver, ['.car-year', '.year', '.reg_date', '.year_info'], '2020'),
+                'price_usd': self.convert_price_to_usd(self.get_text(driver, ['.price', '.car-price', '.amt_prc', '.price_amount', '.price_info', '.txt_price'], '0')),
+                'engine_size': self.get_text(driver, ['.engine', '.engine-size', '.displacement', '.cc_info'], '2000'),
+                'fuel_type': self.get_text(driver, ['.fuel', '.fuel-type', '.fuel_info'], 'Gasoline'),
+                'mileage': self.get_text(driver, ['.mileage', '.odometer', '.mileage_info'], '0'),
                 'transmission': self.get_text(driver, '.transmission', 'Automatic'),
                 'source': 'encar.com'
             }
