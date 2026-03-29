@@ -70,7 +70,6 @@ class CustomsCalculator:
         
         # Конвертируем цену из KRW в USD по актуальному курсу
         price_krw = float(car_data.get('price_krw', 0))
-        # Если в car_data есть и price_krw и price_usd, отдаем приоритет KRW для точности
         if price_krw > 0:
             car_price = price_krw / self.exchange_rate if self.exchange_rate > 0 else price_krw / 1350
         else:
@@ -299,10 +298,13 @@ class CustomsCalculator:
                     "Content-Type": "application/json"
                 }
                 
+                country_map = {"russia": "Россию", "uzbekistan": "Узбекистан", "kazakhstan": "Казахстан"}
+                dest_name = country_map.get(destination, destination)
+
                 prompt = (
                     f"Автомобиль: {car_data['brand']} {car_data['model']} {car_data['year']} года. "
-                    f"Цена в Корее: ${car_data['price_usd']}. "
-                    f"Итоговая стоимость с доставкой и пошлиной в {destination}: ${result['total']}. "
+                    f"Цена в Корее: ${result['car_price']}. "
+                    f"Итоговая стоимость с доставкой и пошлиной в {dest_name}: ${result['total']}. "
                     f"Экономия по сравнению с рынком: ${result['savings']}. "
                     "Дай краткий совет (до 200 символов) на русском языке: выгодно ли это предложение "
                     "с учетом текущего курса воны и таможенных правил."

@@ -44,7 +44,6 @@ class CarImportBot:
         )
         keyboard = [
             [InlineKeyboardButton("💰 Рассчитать авто", callback_data="new_calculation")],
-            [InlineKeyboardButton("📈 Анализ рынка", callback_data="trade_analysis")],
             [InlineKeyboardButton("📞 Связаться с менеджером", callback_data="contact")],
             [InlineKeyboardButton("ℹ️ О нас", callback_data="about")]
         ]
@@ -170,15 +169,9 @@ class CarImportBot:
             await query.message.reply_text(f"ℹ️ {COMPANY_INFO['address']}")
         elif data == "new_calculation":
             await query.message.reply_text("Пожалуйста, пришлите мне ссылку на автомобиль с encar.com.")
-        elif data == "trade_analysis":
-            # Вызов функции анализа (если она реализована в bot.py)
-            if hasattr(self, 'send_trading_analysis'):
-                await self.send_trading_analysis(update, context)
-            else:
-                await query.message.reply_text("Функция анализа рынка временно недоступна.")
 
 def main():
-    """Основная функция запуска бота"""
+    """Основная функция запуска бота (синхронная точка входа)"""
     if not BOT_TOKEN:
         logger.error("BOT_TOKEN is not set!")
         sys.exit(1)
@@ -188,7 +181,7 @@ def main():
         
         async def post_init(application: Application):
             await bot.calculator.update_exchange_rate()
-            logger.info("Exchange rate updated")
+            logger.info("Exchange rate updated during post_init")
 
         application = (
             Application.builder()
@@ -202,7 +195,7 @@ def main():
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
         application.add_handler(CallbackQueryHandler(bot.button_callback))
         
-        print("🚀 Bot is starting on Railway...")
+        print("🚀 Bot is running on Railway!")
         application.run_polling(drop_pending_updates=True)
         
     except Exception as e:

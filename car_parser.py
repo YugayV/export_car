@@ -74,42 +74,48 @@ class CarParser:
             
             # А. Попытка вытащить из мета-тегов (самый точный способ для Encar)
             try:
-                # Пытаемся найти через execute_script для надежности
                 og_desc = driver.execute_script("return document.querySelector('meta[property=\"og:description\"]').content")
-                # Ищем паттерн "цена + 만원" (например, 2500만원)
-                price_match = re.search(r'(\d{2,5})\s*만원', og_desc)
+                # Ищем паттерн цены, учитывая возможные запятые (например, 2,500만원)
+                price_match = re.search(r'([\d,]+)\s*만원', og_desc)
                 if price_match:
-                    raw_price = price_match.group(1)
+                    raw_price = price_match.group(1).replace(',', '')
                     logger.info(f"Price found in meta tag: {raw_price}")
             except:
                 pass
 
-            # Б. Если в мета-тегах нет, пробуем селекторы основной цены
-            if raw_price == '0':
+            # Б. Если в мета-тегах нет, ищем по специфическим селекторам основной цены
+            clean_raw = raw_price.replace(',', '')
+            if raw_price == '0' or (clean_raw.isdigit() and int(clean_raw) < 50):
                 raw_price = self.get_text(driver, [
-                    '.price_amount', 
-                    '.amt_prc', 
-                    '.txt_price', 
+                    '.price_amount .num', 
+                    '.amt_prc .num', 
+                    '.txt_price .num',
                     '.price_info .num', 
                     '.detail_info .price',
                     '.amt'
                 ], '0')
             
-            # В. Если всё еще 0 или слишком низкая (менее 100 манов - это $700, вряд ли Соната 2020), ищем в тексте
-            if raw_price == '0' or (raw_price.isdigit() and int(raw_price) < 100):
+            # В. Валидация и финальный поиск в тексте
+            final_price_krw = self.extract_price_krw(raw_price)
+            
+            # Если цена все еще нереально низкая (меньше 1 млн вон), ищем в innerText
+            if final_price_krw < 1000000:
                 page_text = driver.execute_script("return document.body.innerText")
                 # Ищем все вхождения "число + 만원"
-                all_prices = re.findall(r'(\d{3,5})\s*만원', page_text)
+                all_prices = re.findall(r'([\d,]+)\s*만원', page_text)
                 if all_prices:
-                    # Берем максимальное число (обычно это цена авто, а не доп. платежей)
-                    raw_price = max(all_prices, key=int)
-                    logger.info(f"Price found in text (max pattern): {raw_price}")
+                    clean_prices = [int(p.replace(',', '')) for p in all_prices if p.replace(',', '').isdigit()]
+                    logical_prices = [p for p in clean_prices if p >= 100]
+                    if logical_prices:
+                        raw_price = str(max(logical_prices))
+                        final_price_krw = self.extract_price_krw(raw_price)
+                        logger.info(f"Price corrected via text scan: {final_price_krw}")
 
             car_data = {
                 'brand': self.get_text(driver, ['.car-brand', '.brand', '.prod_title', '.name', '.make_nm', '.detail_title'], 'Hyundai'),
                 'model': self.get_text(driver, ['.car-model', '.model', '.detail_title', '.model_nm', '.prod_title'], 'Sonata'),
                 'year': self.get_text(driver, ['.car-year', '.year', '.reg_date', '.year_info', '.reg_dt', '.reg_year'], '2020'),
-                'price_krw': self.extract_price_krw(raw_price),
+                'price_krw': final_price_krw,
                 'engine_size': self.get_text(driver, ['.engine', '.engine-size', '.displacement', '.cc_info', '.displace', '.capacity'], '2000'),
                 'fuel_type': self.get_text(driver, ['.fuel', '.fuel-type', '.fuel_info', '.fuel_nm'], 'Gasoline'),
                 'mileage': self.get_text(driver, ['.mileage', '.odometer', '.mileage_info', '.km_info', '.mile'], '0'),
