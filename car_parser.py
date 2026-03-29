@@ -75,35 +75,54 @@ class CarParser:
             model = 'Unknown'
             year = '2020'
             
-            # А. Попытка вытащить данные из мета-тегов (самый точный способ для Encar)
+            # А. Попытка вытащить данные из мета-тегов и заголовка (самый точный способ)
             try:
-                # Название страницы часто содержит Марку и Модель
-                page_title = driver.title
-                if page_title and '-' in page_title:
-                    title_parts = page_title.split('-')[0].strip().split()
+                # 1. Проверяем og:title - там обычно "Марка Модель - Encar"
+                og_title = driver.execute_script("return document.querySelector('meta[property=\"og:title\"]').content")
+                if og_title and 'Encar' in og_title:
+                    clean_title = og_title.split('-')[0].strip()
+                    title_parts = clean_title.split()
                     if len(title_parts) >= 2:
                         brand = title_parts[0]
                         model = " ".join(title_parts[1:])
                 
+                # 2. Если все еще Unknown, пробуем заголовок страницы
+                if brand == 'Unknown':
+                    page_title = driver.title
+                    if page_title and '-' in page_title:
+                        clean_title = page_title.split('-')[0].strip()
+                        title_parts = clean_title.split()
+                        if len(title_parts) >= 2:
+                            brand = title_parts[0]
+                            model = " ".join(title_parts[1:])
+
+                # 3. Пытаемся найти год и цену в og:description
                 og_desc = driver.execute_script("return document.querySelector('meta[property=\"og:description\"]').content")
-                # Ищем паттерн цены, учитывая возможные запятые (например, 2,500만원)
+                # Цена
                 price_match = re.search(r'([\d,]+)\s*만원', og_desc)
                 if price_match:
                     raw_price = price_match.group(1).replace(',', '')
-                    logger.info(f"Price found in meta tag: {raw_price}")
-                
-                # Ищем год в описании
+                # Год
                 year_match = re.search(r'(\d{2,4})년', og_desc)
                 if year_match:
                     year = year_match.group(1)
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Meta extraction failed: {e}")
 
             # Б. Если в мета-тегах нет, ищем по специфическим селекторам
             if brand == 'Unknown':
-                brand = self.get_text(driver, ['.car-brand', '.brand', '.make_nm', '.detail_title .brand'], 'Unknown')
+                brand = self.get_text(driver, [
+                    '.car-brand', '.brand', '.make_nm', 
+                    '.prod_title .make', '.detail_title .brand',
+                    'span.make'
+                ], 'Unknown')
+            
             if model == 'Unknown':
-                model = self.get_text(driver, ['.car-model', '.model', '.model_nm', '.detail_title .model'], 'Unknown')
+                model = self.get_text(driver, [
+                    '.car-model', '.model', '.model_nm', 
+                    '.prod_title .model', '.detail_title .model',
+                    'span.model'
+                ], 'Unknown')
             if year == '2020':
                 year = self.get_text(driver, ['.car-year', '.year', '.reg_date', '.year_info', '.reg_dt'], '2020')
 

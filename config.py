@@ -34,11 +34,10 @@ DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 # Контакты компании
 COMPANY_INFO = {
     "name": "Korean Auto Export Co.",
-    "phone": os.getenv('COMPANY_PHONE', '+82 10-1234-5678'),
-    "email": os.getenv('COMPANY_EMAIL', 'info@koreanauto.kr'),
-    "telegram": os.getenv('COMPANY_TELEGRAM', '@korean_auto_bot'),
-    "website": os.getenv('COMPANY_WEBSITE', 'https://www.koreanauto.kr'),
-    "address": os.getenv('COMPANY_ADDRESS', 'Seoul, Gangnam-gu, Teheran-ro 123')
+    "phone": "+82 10-5512-1710",
+    "email": os.getenv('COMPANY_EMAIL', 'vamp.09.94@gmail.com'),
+    "telegram": "@koreanautobot",
+    "address": os.getenv('COMPANY_ADDRESS', 'Sosan')
 }
 
 # Настройки DeepSeek (OpenRouter)

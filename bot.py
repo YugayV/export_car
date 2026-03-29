@@ -161,7 +161,8 @@ class CarImportBot:
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"💰 *ИТОГО:* `{result['total']:,.0f} USD`{ai_details}\n\n"
                 f"🤖 *Рекомендация ИИ:* \n_{ai_recommendation}_\n\n"
-                f"📞 Связаться с менеджером для заказа: {COMPANY_INFO['telegram']}"
+                f"📞 *Для заказа:* {COMPANY_INFO['telegram']}\n"
+                f"📱 *WhatsApp/Tel:* {COMPANY_INFO['phone']}"
             )
             
             await query.edit_message_text(final_msg, parse_mode='Markdown')
