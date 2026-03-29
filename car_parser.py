@@ -85,7 +85,7 @@ class CarParser:
                 'brand': self.get_text(driver, ['.car-brand', '.brand', '.prod_title', '.name', '.make_nm', '.detail_title'], 'Hyundai'),
                 'model': self.get_text(driver, ['.car-model', '.model', '.detail_title', '.model_nm', '.prod_title'], 'Sonata'),
                 'year': self.get_text(driver, ['.car-year', '.year', '.reg_date', '.year_info', '.reg_dt', '.reg_year'], '2020'),
-                'price_usd': self.convert_price_to_usd(raw_price),
+                'price_krw': self.extract_price_krw(raw_price),
                 'engine_size': self.get_text(driver, ['.engine', '.engine-size', '.displacement', '.cc_info', '.displace', '.capacity'], '2000'),
                 'fuel_type': self.get_text(driver, ['.fuel', '.fuel-type', '.fuel_info', '.fuel_nm'], 'Gasoline'),
                 'mileage': self.get_text(driver, ['.mileage', '.odometer', '.mileage_info', '.km_info', '.mile'], '0'),
@@ -118,7 +118,7 @@ class CarParser:
                         'brand': self.find_text(soup, ['car_brand', 'brand']),
                         'model': self.find_text(soup, ['car_model', 'model']),
                         'year': self.find_text(soup, ['year', 'car_year']),
-                        'price_usd': self.convert_price_to_usd(self.find_text(soup, ['price', 'car_price'])),
+                        'price_krw': self.extract_price_krw(self.find_text(soup, ['price', 'car_price'])),
                         'engine_size': '2000',
                         'fuel_type': 'Gasoline',
                         'mileage': '0',
@@ -144,7 +144,7 @@ class CarParser:
                         'brand': 'Unknown',
                         'model': 'Unknown',
                         'year': '2020',
-                        'price_usd': self.convert_price_to_usd(self.find_price_general(soup)),
+                        'price_krw': self.extract_price_krw(self.find_price_general(soup)),
                         'engine_size': '2000',
                         'fuel_type': 'Gasoline',
                         'mileage': '0',
@@ -176,18 +176,16 @@ class CarParser:
             if element: return element.text.strip()
         return ''
     
-    def convert_price_to_usd(self, price_text: str) -> float:
-        """Конвертация цены в USD (учитывая 'man-won' - 10,000 KRW)"""
-        price_digits = re.sub(r'[^\d]', '', price_text)
+    def extract_price_krw(self, price_text: str) -> float:
+        """Извлечение чистой цены в вонах (KRW)"""
+        price_digits = re.sub(r'[^\d]', '', str(price_text))
         try:
             if price_digits:
-                price_value = float(price_digits)
-                # Если цена в 'man-won' (обычно < 100,000)
-                if price_value < 100000:
-                    price_krw = price_value * 10000
-                else:
-                    price_krw = price_value
-                return round(price_krw / 1350, 2)
+                val = float(price_digits)
+                # Если цена на Encar в 'man-won' (обычно < 100,000)
+                if val < 100000:
+                    return val * 10000
+                return val
         except:
             pass
         return 0

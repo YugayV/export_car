@@ -68,8 +68,14 @@ class CustomsCalculator:
         
         country = self.country_coeff.get(destination, self.country_coeff['russia'])
         
-        # Получаем данные авто
-        car_price = float(car_data.get('price_usd', 0))
+        # Конвертируем цену из KRW в USD по актуальному курсу
+        price_krw = float(car_data.get('price_krw', 0))
+        # Если в car_data есть и price_krw и price_usd, отдаем приоритет KRW для точности
+        if price_krw > 0:
+            car_price = price_krw / self.exchange_rate if self.exchange_rate > 0 else price_krw / 1350
+        else:
+            car_price = float(car_data.get('price_usd', 0))
+            
         engine_size = float(self.extract_engine_size(car_data.get('engine_size', '2000')))
         year = int(self.extract_year(car_data.get('year', '2020')))
         

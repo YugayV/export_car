@@ -80,15 +80,23 @@ class CarImportBot:
         
         try:
             car_data = await self.parser.parse_from_url(url)
-            if car_data and car_data.get('price_usd', 0) > 0:
+            if car_data and (car_data.get('price_krw', 0) > 0 or car_data.get('price_usd', 0) > 0):
                 # Сохраняем данные в сессию пользователя
                 self.user_sessions[user_id] = {'car_data': car_data}
+                
+                # Считаем примерную цену в USD для превью
+                price_krw = car_data.get('price_krw', 0)
+                if price_krw > 0:
+                    rate = self.calculator.exchange_rate if self.calculator.exchange_rate > 0 else 1350
+                    price_usd = price_krw / rate
+                else:
+                    price_usd = car_data.get('price_usd', 0)
                 
                 # Показываем инфо об авто и спрашиваем страну
                 msg = (
                     f"✅ *Car Found:* {car_data['brand']} {car_data['model']}\n"
                     f"📅 *Year:* {car_data['year']}\n"
-                    f"💰 *Price in Korea:* ${car_data['price_usd']:,.0f}\n\n"
+                    f"💰 *Price in Korea:* {price_krw:,.0f} KRW (~${price_usd:,.0f})\n\n"
                     "🌍 *Select Destination Country:* "
                 )
                 
