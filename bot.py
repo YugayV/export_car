@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -11,12 +8,7 @@ import asyncio
 import re
 import os
 import sys
-import io
 from datetime import datetime
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import yfinance as yf
 
 # Импортируем наши модули
 from car_parser import CarParser
@@ -30,6 +22,10 @@ logger = setup_logger(__name__, 'logs/bot.log', level=LOG_LEVEL)
 
 class CarImportBot:
     def __init__(self):
+        # Создаем папку для логов если её нет
+        if not os.path.exists('logs'):
+            os.makedirs('logs')
+            
         self.parser = CarParser()
         self.calculator = CustomsCalculator()
         self.db = Database()
@@ -39,129 +35,96 @@ class CarImportBot:
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler for /start command"""
         user = update.effective_user
-        welcome_message = f"Hello {user.first_name}! I can help you calculate car import costs from Korea or provide trading analysis."
-        await update.message.reply_text(welcome_message)
+        welcome_message = (
+            f"🚗 *Welcome to Car Import Bot, {user.first_name}!*\n\n"
+            "I can help you calculate the full cost of importing a car from Korea.\n\n"
+            "1️⃣ Send me an encar.com link\n"
+            "2️⃣ Or use the buttons below for info.\n\n"
+            "Use /help for more instructions."
+        )
+        keyboard = [
+            [InlineKeyboardButton("💰 Calculate Car", callback_data="new_calculation")],
+            [InlineKeyboardButton("📞 Contact Manager", callback_data="contact")],
+            [InlineKeyboardButton("ℹ️ About Us", callback_data="about")]
+        ]
+        await update.message.reply_text(
+            welcome_message, 
+            parse_mode='Markdown', 
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler for /help command"""
-        await update.message.reply_text("Send a car link or type 'trade BTC' for analysis.")
-
-    async def price_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler for /price command"""
-        await update.message.reply_text("Please send a car link from Encar.")
-
-    async def history_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler for /history command"""
-        await update.message.reply_text("History feature coming soon.")
-
-    async def contact_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler for /contact command"""
-        await update.message.reply_text("Contact us at @korean_auto_bot")
-
-    async def currency_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler for /currency command"""
-        await update.message.reply_text("Current rate: 1 USD = 1350 KRW")
-
-    async def about_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler for /about command"""
-        await update.message.reply_text("We are a car export company from Korea.")
+        help_text = (
+            "📖 *How to use this bot:*\n\n"
+            "1. Go to [encar.com](https://www.encar.com)\n"
+            "2. Find a car you like\n"
+            "3. Copy the URL and paste it here\n"
+            "4. I will calculate the total cost including customs and shipping."
+        )
+        await update.message.reply_text(help_text, parse_mode='Markdown')
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Process incoming text messages"""
-        text = update.message.text.lower()
-        if "trade" in text or "btc" in text or "eurusd" in text:
-            await self.send_trading_analysis(update, context)
+        text = update.message.text
+        if re.search(r'encar\.com', text):
+            await self.process_url(update, context, text)
         else:
-            await update.message.reply_text("I received your message. Use /help for instructions.")
+            await update.message.reply_text("Please send a valid encar.com link.")
 
-    async def send_trading_analysis(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Generate and send pretty chart + standardized trading analysis in English"""
-        message = update.message if update.message else update.callback_query.message
-        
-        await message.chat.send_action(action="upload_photo")
-        
+    async def process_url(self, update, context, url):
+        """Analyze Encar link and show price"""
+        await update.message.reply_text("🔍 Analyzing link... Please wait.")
         try:
-            # 1. Fetch data
-            ticker = 'EURUSD=X'
-            df = yf.download(ticker, period='60d', interval='1d', progress=False)
-            
-            if df.empty:
-                await message.reply_text("Failed to fetch market data.")
-                return
-
-            # 2. Calculate EMAs
-            ema_periods = [8, 21, 55]
-            for period in ema_periods:
-                df[f'EMA_{period}'] = df['Close'].ewm(span=period).mean()
-
-            # 3. Generate Pretty Chart
-            plt.style.use('seaborn-v0_8-darkgrid')
-            fig, ax = plt.subplots(figsize=(12, 7))
-            
-            df_plot = df.tail(50)
-            
-            ax.plot(df_plot.index, df_plot['Close'], label='Price', color='#2c3e50', linewidth=2, alpha=0.8)
-            colors = ['#e74c3c', '#2ecc71', '#3498db']
-            for i, period in enumerate(ema_periods):
-                ax.plot(df_plot.index, df_plot[f'EMA_{period}'], label=f'EMA {period}', color=colors[i], linestyle='--', linewidth=1.5)
-
-            ax.set_title(f'{ticker} Price Analysis', fontsize=16, fontweight='bold', pad=20)
-            ax.set_xlabel('Date', fontsize=12)
-            ax.set_ylabel('Price', fontsize=12)
-            ax.legend(loc='best', frameon=True, fontsize=10)
-            
-            fig.autofmt_xdate()
-            plt.tight_layout()
-
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png', dpi=150)
-            buf.seek(0)
-            plt.close(fig)
-
-            # 4. Standardized Prediction
-            response = (
-                "📊 *TRADING ANALYSIS*\n\n"
-                "INSTRUMENT: **EURUSD**\n"
-                "PREDICTION: **UP**\n"
-                "PROBABILITY: **65.4%**\n"
-                "RECOMMENDATION: **TRADE (BUY)**\n"
-                "REASON: Price is above key EMAs. RSI and MACD from model research indicate a strong trend start."
-            )
-            
-            await message.reply_photo(photo=buf, caption=response, parse_mode='Markdown')
-            
+            car_data = await self.parser.parse_from_url(url)
+            if car_data:
+                await update.message.reply_text(
+                    f"✅ *Found:* {car_data['brand']} {car_data['model']}\n"
+                    f"📅 *Year:* {car_data['year']}\n"
+                    f"💰 *Price in Korea:* ${car_data['price_usd']:,.0f}\n\n"
+                    "Calculating total import cost...",
+                    parse_mode='Markdown'
+                )
+                # Расчет стоимости
+                result = await self.calculator.calculate_total_cost(car_data, destination='russia')
+                await update.message.reply_text(
+                    f"📊 *Total Cost to Russia:*\n"
+                    f"💵 Total: ${result['total']:,.0f}\n"
+                    f"⚓ Shipping: ${result['shipping_cost']:,.0f}\n"
+                    f"🛡️ Customs: ${result['customs_duty']:,.0f}",
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text("❌ Could not extract data from this link.")
         except Exception as e:
-            logger.error(f"Error in trading analysis: {e}")
-            await message.reply_text("Error generating trading report. Please try again later.")
+            logger.error(f"Error processing URL: {e}")
+            await update.message.reply_text("❌ Error processing link. Please try again.")
 
-    // ... existing code ...
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle button clicks"""
         query = update.callback_query
         await query.answer()
+        
         if query.data == "contact":
-            await query.message.reply_text(f"Contact our manager: {COMPANY_INFO['telegram']}")
+            await query.message.reply_text(f"📞 Contact our manager: {COMPANY_INFO['telegram']}")
         elif query.data == "about":
-            await query.message.reply_text(COMPANY_INFO['address'])
+            await query.message.reply_text(f"ℹ️ {COMPANY_INFO['address']}")
+        elif query.data == "new_calculation":
+            await query.message.reply_text("Please send me an encar.com car link.")
 
 def main():
-    """Основная функция запуска бота (синхронная точка входа)"""
-    
-    # Проверка токена
+    """Основная функция запуска бота"""
     if not BOT_TOKEN:
         logger.error("BOT_TOKEN is not set!")
-        print("❌ ERROR: BOT_TOKEN is not set in environment variables!")
         sys.exit(1)
     
     try:
-        # Создаем экземпляр бота
         bot = CarImportBot()
         
-        # Функция для асинхронной инициализации (обновление курса)
         async def post_init(application: Application):
             await bot.calculator.update_exchange_rate()
-            logger.info("Exchange rate updated during post_init")
+            logger.info("Exchange rate updated")
 
-        # Создаем приложение
         application = (
             Application.builder()
             .token(BOT_TOKEN)
@@ -169,22 +132,16 @@ def main():
             .build()
         )
         
-        # Добавляем обработчики команд
         application.add_handler(CommandHandler("start", bot.start))
         application.add_handler(CommandHandler("help", bot.help_command))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
         application.add_handler(CallbackQueryHandler(bot.button_callback))
         
-        # Запускаем бота
-        logger.info("Starting bot on Railway...")
-        print("🚀 Bot is running on Railway!")
-        
-        # run_polling() блокирует поток и управляет циклом событий
+        print("🚀 Bot is starting on Railway...")
         application.run_polling(drop_pending_updates=True)
         
     except Exception as e:
         logger.error(f"Fatal error: {e}")
-        print(f"❌ Fatal error: {e}")
         sys.exit(1)
 
 if __name__ == '__main__':
