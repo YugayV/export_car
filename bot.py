@@ -33,19 +33,20 @@ class CarImportBot:
         logger.info("Bot initialized")
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler for /start command"""
+        """Обработчик команды /start"""
         user = update.effective_user
         welcome_message = (
-            f"🚗 *Welcome to Car Import Bot, {user.first_name}!*\n\n"
-            "I can help you calculate the full cost of importing a car from Korea.\n\n"
-            "1️⃣ Send me an encar.com link\n"
-            "2️⃣ Or use the buttons below for info.\n\n"
-            "Use /help for more instructions."
+            f"🚗 *Добро пожаловать в Car Import Bot, {user.first_name}!*\n\n"
+            "Я помогу вам рассчитать полную стоимость импорта автомобиля из Кореи.\n\n"
+            "1️⃣ Пришлите мне ссылку на [encar.com](https://www.encar.com)\n"
+            "2️⃣ Или воспользуйтесь кнопками ниже для информации.\n\n"
+            "Используйте /help для получения инструкций."
         )
         keyboard = [
-            [InlineKeyboardButton("💰 Calculate Car", callback_data="new_calculation")],
-            [InlineKeyboardButton("📞 Contact Manager", callback_data="contact")],
-            [InlineKeyboardButton("ℹ️ About Us", callback_data="about")]
+            [InlineKeyboardButton("💰 Рассчитать авто", callback_data="new_calculation")],
+            [InlineKeyboardButton("📈 Анализ рынка", callback_data="trade_analysis")],
+            [InlineKeyboardButton("📞 Связаться с менеджером", callback_data="contact")],
+            [InlineKeyboardButton("ℹ️ О нас", callback_data="about")]
         ]
         await update.message.reply_text(
             welcome_message, 
@@ -54,29 +55,29 @@ class CarImportBot:
         )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler for /help command"""
+        """Обработчик команды /help"""
         help_text = (
-            "📖 *How to use this bot:*\n\n"
-            "1. Go to [encar.com](https://www.encar.com)\n"
-            "2. Find a car you like\n"
-            "3. Copy the URL and paste it here\n"
-            "4. I will calculate the total cost including customs and shipping."
+            "📖 *Как пользоваться ботом:*\n\n"
+            "1. Зайдите на [encar.com](https://www.encar.com)\n"
+            "2. Найдите интересующий вас автомобиль\n"
+            "3. Скопируйте ссылку и вставьте её сюда\n"
+            "4. Я рассчитаю полную стоимость, включая таможню и доставку."
         )
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Process incoming text messages"""
+        """Обработка входящих текстовых сообщений"""
         text = update.message.text
         # Регулярное выражение для Encar или Daum (часто ссылки в Kakao приходят через daum)
         if re.search(r'encar\.com|daumcdn\.net', text):
             await self.process_url(update, context, text)
         else:
-            await update.message.reply_text("Please send a valid encar.com link.")
+            await update.message.reply_text("Пожалуйста, пришлите корректную ссылку на encar.com.")
 
     async def process_url(self, update, context, url):
-        """Analyze Encar link and ask for destination country"""
+        """Анализ ссылки Encar и запрос страны назначения"""
         user_id = update.effective_user.id
-        await update.message.reply_text("🔍 Analyzing link... Please wait.")
+        await update.message.reply_text("🔍 Анализирую ссылку... Пожалуйста, подождите.")
         
         try:
             car_data = await self.parser.parse_from_url(url)
@@ -94,16 +95,16 @@ class CarImportBot:
                 
                 # Показываем инфо об авто и спрашиваем страну
                 msg = (
-                    f"✅ *Car Found:* {car_data['brand']} {car_data['model']}\n"
-                    f"📅 *Year:* {car_data['year']}\n"
-                    f"💰 *Price in Korea:* {price_krw:,.0f} KRW (~${price_usd:,.0f})\n\n"
-                    "🌍 *Select Destination Country:* "
+                    f"✅ *Автомобиль найден:* {car_data['brand']} {car_data['model']}\n"
+                    f"📅 *Год:* {car_data['year']}\n"
+                    f"💰 *Цена в Корее:* {price_krw:,.0f} KRW (~${price_usd:,.0f})\n\n"
+                    "🌍 *Выберите страну назначения:* "
                 )
                 
                 keyboard = [
-                    [InlineKeyboardButton("🇷🇺 Russia", callback_data="dest_russia")],
-                    [InlineKeyboardButton("🇺🇿 Uzbekistan", callback_data="dest_uzbekistan")],
-                    [InlineKeyboardButton("🇰🇿 Kazakhstan", callback_data="dest_kazakhstan")]
+                    [InlineKeyboardButton("🇷🇺 Россия", callback_data="dest_russia")],
+                    [InlineKeyboardButton("🇺🇿 Узбекистан", callback_data="dest_uzbekistan")],
+                    [InlineKeyboardButton("🇰🇿 Казахстан", callback_data="dest_kazakhstan")]
                 ]
                 await update.message.reply_text(
                     msg, 
@@ -112,16 +113,16 @@ class CarImportBot:
                 )
             else:
                 await update.message.reply_text(
-                    "❌ *Could not extract car price.*\n"
-                    "The link might be invalid or car is sold. Please try another Encar link.",
+                    "❌ *Не удалось извлечь цену автомобиля.*\n"
+                    "Ссылка может быть неверной или автомобиль уже продан. Попробуйте другую ссылку с Encar.",
                     parse_mode='Markdown'
                 )
         except Exception as e:
             logger.error(f"Error processing URL: {e}")
-            await update.message.reply_text("❌ Error processing link. Please try again.")
+            await update.message.reply_text("❌ Ошибка при обработке ссылки. Пожалуйста, попробуйте еще раз.")
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle button clicks and calculate final price"""
+        """Обработка нажатий на кнопки и финальный расчет"""
         query = update.callback_query
         user_id = update.effective_user.id
         await query.answer()
@@ -133,7 +134,7 @@ class CarImportBot:
             session = self.user_sessions.get(user_id)
             
             if not session or 'car_data' not in session:
-                await query.edit_message_text("❌ Session expired. Please send the link again.")
+                await query.edit_message_text("❌ Сессия истекла. Пожалуйста, пришлите ссылку снова.")
                 return
             
             car_data = session['car_data']
@@ -144,30 +145,37 @@ class CarImportBot:
             # Получаем рекомендацию от DeepSeek
             ai_recommendation = await self.calculator.get_ai_recommendation(car_data, result, country_code)
             
-            country_name = "Russia" if country_code == "russia" else "Uzbekistan" if country_code == "uzbekistan" else "Kazakhstan"
+            country_map = {"russia": "Россию", "uzbekistan": "Узбекистан", "kazakhstan": "Казахстан"}
+            country_name = country_map.get(country_code, country_code)
             
             final_msg = (
-                f"📊 *Full Import Cost to {country_name}:*\n"
+                f"📊 *Полная стоимость импорта в {country_name}:*\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🚗 *Car Price:* ${car_data['price_usd']:,.0f}\n"
-                f"⚓ *Shipping:* ${result['shipping_cost']:,.0f}\n"
-                f"🛡️ *Customs Duty:* ${result['customs_duty']:,.0f}\n"
-                f"♻️ *Recycling Fee:* ${result['recycling_fee']:,.0f}\n"
-                f"📦 *Other Fees:* ${result['broker_fee'] + result['customs_fee'] + result['insurance']:,.0f}\n"
+                f"🚗 *Цена авто:* ${result['car_price']:,.0f}\n"
+                f"⚓ *Доставка:* ${result['shipping_cost']:,.0f}\n"
+                f"🛡️ *Таможенная пошлина:* ${result['customs_duty']:,.0f}\n"
+                f"♻️ *Утильсбор:* ${result['recycling_fee']:,.0f}\n"
+                f"📦 *Прочие расходы:* ${result['broker_fee'] + result['customs_fee'] + result['insurance']:,.0f}\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"💰 *TOTAL:* `${result['total']:,.0f}`\n\n"
-                f"🤖 *AI Recommendation:* \n_{ai_recommendation}_\n\n"
-                f"📞 Contact manager to order: {COMPANY_INFO['telegram']}"
+                f"💰 *ИТОГО:* `{result['total']:,.0f} USD`\n\n"
+                f"🤖 *Рекомендация ИИ:* \n_{ai_recommendation}_\n\n"
+                f"📞 Связаться с менеджером для заказа: {COMPANY_INFO['telegram']}"
             )
             
             await query.edit_message_text(final_msg, parse_mode='Markdown')
             
         elif data == "contact":
-            await query.message.reply_text(f"📞 Contact our manager: {COMPANY_INFO['telegram']}")
+            await query.message.reply_text(f"📞 Связаться с нашим менеджером: {COMPANY_INFO['telegram']}")
         elif data == "about":
             await query.message.reply_text(f"ℹ️ {COMPANY_INFO['address']}")
         elif data == "new_calculation":
-            await query.message.reply_text("Please send me an encar.com car link.")
+            await query.message.reply_text("Пожалуйста, пришлите мне ссылку на автомобиль с encar.com.")
+        elif data == "trade_analysis":
+            # Вызов функции анализа (если она реализована в bot.py)
+            if hasattr(self, 'send_trading_analysis'):
+                await self.send_trading_analysis(update, context)
+            else:
+                await query.message.reply_text("Функция анализа рынка временно недоступна.")
 
 def main():
     """Основная функция запуска бота"""
