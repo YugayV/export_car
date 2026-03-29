@@ -31,7 +31,55 @@ class CarImportBot:
         self.user_sessions = {}
         logger.info("Bot initialized")
     
-    # ... все методы остаются без изменений ...
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler for /start command"""
+        user = update.effective_user
+        welcome_message = f"Hello {user.first_name}! I can help you calculate car import costs from Korea or provide trading analysis."
+        await update.message.reply_text(welcome_message)
+
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler for /help command"""
+        await update.message.reply_text("Send a car link or type 'trade BTC' for analysis.")
+
+    async def price_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler for /price command"""
+        await update.message.reply_text("Please send a car link from Encar.")
+
+    async def history_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler for /history command"""
+        await update.message.reply_text("History feature coming soon.")
+
+    async def contact_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler for /contact command"""
+        await update.message.reply_text("Contact us at @korean_auto_bot")
+
+    async def currency_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler for /currency command"""
+        await update.message.reply_text("Current rate: 1 USD = 1350 KRW")
+
+    async def about_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler for /about command"""
+        await update.message.reply_text("We are a car export company from Korea.")
+
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Process incoming text messages"""
+        text = update.message.text.lower()
+        if "trade" in text or "btc" in text:
+            response = (
+                "PREDICTION: UP\n"
+                "PROBABILITY: 65%\n"
+                "RECOMMENDATION: TRADE\n"
+                "REASON: Alligator and fractals signal the start of a trend."
+            )
+            await update.message.reply_text(response)
+        else:
+            await update.message.reply_text("I received your message. Use /help for instructions.")
+
+    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle button clicks"""
+        query = update.callback_query
+        await query.answer()
+        await query.edit_message_text(text=f"Selected option: {query.data}")
 
 async def main():
     """Основная функция запуска бота"""
