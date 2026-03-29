@@ -1,5 +1,5 @@
 # Используем стабильный образ Python
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # Устанавливаем системные зависимости и Chrome без использования apt-key
 RUN apt-get update && apt-get install -y \
@@ -18,12 +18,17 @@ RUN apt-get update && apt-get install -y \
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
+# Создаем не-root пользователя
+RUN useradd -m botuser
+USER botuser
+
 # Копируем зависимости и устанавливаем их
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --chown=botuser:botuser requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Копируем все файлы проекта
-COPY . .
+COPY --chown=botuser:botuser . .
 
 # Создаем необходимые директории
 RUN mkdir -p logs data
