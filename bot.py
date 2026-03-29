@@ -63,7 +63,7 @@ class CarImportBot:
         # Отправляем отдельное сообщение с постоянным меню
         await update.message.reply_text(
             "Используйте кнопки меню для навигации:",
-            reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True, persistent=True)
+            reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True, is_persistent=True)
         )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
