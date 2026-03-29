@@ -45,147 +45,114 @@ class CarParser:
         return domain
     
     async def parse_encar(self, url: str) -> Optional[Dict]:
-        """Парсинг encar.com (Mobile & Desktop) с интеллектуальным поиском цены"""
+        """Парсинг encar.com (Mobile & Desktop) с интеллектуальным поиском цены и названия"""
         chrome_options = Options()
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
-        # Имитируем реальный мобильный браузер (iPhone)
         chrome_options.add_argument('user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/04.1')
         
         driver = None
         try:
             driver = webdriver.Chrome(options=chrome_options)
-            driver.set_window_size(375, 812) # Мобильный размер окна
+            driver.set_window_size(375, 812)
             driver.get(url)
             
-            # Ожидаем появления любого элемента (макс 15 сек)
-            wait = WebDriverWait(driver, 15)
-            try:
-                wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-            except:
-                logger.warning(f"Wait timeout for body on {url}")
-
-            # Даем JS время на полную отрисовку всех данных
+            # Ожидаем загрузки страницы
             await asyncio.sleep(5)
             
-            # 1. Интеллектуальный поиск цены и данных
-            raw_price = '0'
-            brand = 'Unknown'
-            model = 'Unknown'
-            year = '2020'
+            page_source = driver.page_source
             
-            # А. Попытка вытащить данные из мета-тегов и заголовка (самый точный способ)
-            try:
-                # 1. Проверяем og:title - там обычно "Марка Модель - Encar"
+            # 1. Попытка вытащить данные через JavaScript (самый точный метод для Encar)
+            script_data = driver.execute_script("""
+                let res = {brand: 'Unknown', model: 'Unknown', price: 0, year: '2020'};
+                try {
+                    // 1. Поиск в глобальных переменных Encar (часто есть на мобильной версии)
+                    if (window.carDetail) {
+                        res.brand = window.carDetail.makeNm || res.brand;
+                        res.model = window.carDetail.modelNm || res.model;
+                        res.price = window.carDetail.price || res.price;
+                        res.year = window.carDetail.modelYear || res.year;
+                    }
+                    // 2. Поиск в JSON-LD
+                    let jsonLd = document.querySelector('script[type="application/ld+json"]');
+                    if (jsonLd) {
+                        let data = JSON.parse(jsonLd.innerText);
+                        if (data.brand) res.brand = data.brand.name || res.brand;
+                        if (data.name) res.model = data.name || res.model;
+                        if (data.offers && data.offers.price) res.price = data.offers.price || res.price;
+                    }
+                } catch(e) {}
+                return res;
+            """)
+            
+            brand = script_data.get('brand', 'Unknown')
+            model = script_data.get('model', 'Unknown')
+            raw_price = str(script_data.get('price', '0'))
+            year = str(script_data.get('year', '2020'))
+
+            # 2. Если через JS не вышло, ищем в meta-тегах (og:title, og:description)
+            if brand == 'Unknown' or model == 'Unknown':
                 og_title = driver.execute_script("return document.querySelector('meta[property=\"og:title\"]')?.content")
                 if og_title and 'Encar' in og_title:
+                    # Формат обычно: "Hyundai Sonata - Encar"
                     clean_title = og_title.split('-')[0].strip()
-                    title_parts = clean_title.split()
-                    if len(title_parts) >= 2:
-                        brand = title_parts[0]
-                        model = " ".join(title_parts[1:])
-                
-                # 2. Если все еще Unknown, пробуем вытащить из JSON-LD или скриптов Encar
-                if brand == 'Unknown':
-                    script_data = driver.execute_script("""
-                        let data = {};
-                        // Попытка найти данные в глобальных переменных Encar
-                        if (window.carDetail) {
-                            data.brand = window.carDetail.makeNm;
-                            data.model = window.carDetail.modelNm;
-                        }
-                        return data;
-                    """)
-                    if script_data.get('brand'):
-                        brand = script_data['brand']
-                        model = script_data.get('model', 'Unknown')
+                    parts = clean_title.split()
+                    if len(parts) >= 2:
+                        brand = parts[0]
+                        model = " ".join(parts[1:])
 
-                # 3. Если все еще Unknown, пробуем заголовок страницы
-                if brand == 'Unknown':
-                    page_title = driver.title
-                    if page_title and '-' in page_title:
-                        clean_title = page_title.split('-')[0].strip()
-                        title_parts = clean_title.split()
-                        if len(title_parts) >= 2:
-                            brand = title_parts[0]
-                            model = " ".join(title_parts[1:])
-
-                # 3. Пытаемся найти год и цену в og:description
-                og_desc = driver.execute_script("return document.querySelector('meta[property=\"og:description\"]').content")
-                # Цена
-                price_match = re.search(r'([\d,]+)\s*만원', og_desc)
-                if price_match:
-                    raw_price = price_match.group(1).replace(',', '')
-                # Год
-                year_match = re.search(r'(\d{2,4})년', og_desc)
-                if year_match:
-                    year = year_match.group(1)
-            except Exception as e:
-                logger.warning(f"Meta extraction failed: {e}")
-
-            # Б. Если в мета-тегах нет, ищем по специфическим селекторам
+            # 3. Если все еще Unknown, ищем через регулярные выражения в исходном коде
             if brand == 'Unknown':
-                brand = self.get_text(driver, [
-                    '.car-brand', '.brand', '.make_nm', 
-                    '.prod_title .make', '.detail_title .brand',
-                    'span.make'
-                ], 'Unknown')
+                brand_match = re.search(r'"(?:makeNm|brandName)":"([^"]+)"', page_source)
+                if brand_match: brand = brand_match.group(1)
             
             if model == 'Unknown':
-                model = self.get_text(driver, [
-                    '.car-model', '.model', '.model_nm', 
-                    '.prod_title .model', '.detail_title .model',
-                    'span.model'
-                ], 'Unknown')
-            if year == '2020':
-                year = self.get_text(driver, ['.car-year', '.year', '.reg_date', '.year_info', '.reg_dt'], '2020')
+                model_match = re.search(r'"(?:modelNm|modelName)":"([^"]+)"', page_source)
+                if model_match: model = model_match.group(1)
 
-            clean_raw = raw_price.replace(',', '')
-            if raw_price == '0' or (clean_raw.isdigit() and int(clean_raw) < 50):
-                raw_price = self.get_text(driver, [
-                    '.price_amount .num', 
-                    '.amt_prc .num', 
-                    '.txt_price .num',
-                    '.price_info .num', 
-                    '.amt',
-                    '.price'
-                ], '0')
-            
-            # В. Валидация и финальный поиск в тексте
+            # 4. Поиск цены в тексте (резервный вариант)
+            if raw_price == '0':
+                og_desc = driver.execute_script("return document.querySelector('meta[property=\"og:description\"]')?.content")
+                if og_desc:
+                    price_match = re.search(r'([\d,]+)\s*만원', og_desc)
+                    if price_match: raw_price = price_match.group(1).replace(',', '')
+
+            # 5. Ищем цену в innerText страницы, если все еще 0
             final_price_krw = self.extract_price_krw(raw_price)
-            
-            # Если цена все еще нереально низкая (меньше 1 млн вон), ищем в innerText
             if final_price_krw < 1000000:
                 page_text = driver.execute_script("return document.body.innerText")
-                # Ищем все вхождения "число + 만원"
-                all_prices = re.findall(r'([\d,]+)\s*만원', page_text)
-                if all_prices:
-                    clean_prices = [int(p.replace(',', '')) for p in all_prices if p.replace(',', '').isdigit()]
-                    logical_prices = [p for p in clean_prices if p >= 100]
-                    if logical_prices:
-                        raw_price = str(max(logical_prices))
-                        final_price_krw = self.extract_price_krw(raw_price)
-                        logger.info(f"Price corrected via text scan: {final_price_krw}")
+                prices = re.findall(r'([\d,]+)\s*만원', page_text)
+                if prices:
+                    valid_prices = [int(p.replace(',', '')) for p in prices if p.replace(',', '').isdigit()]
+                    logical = [p for p in valid_prices if p >= 100] # Машины дешевле 1 млн вон редкость
+                    if logical:
+                        final_price_krw = max(logical) * 10000
 
             car_data = {
                 'brand': brand,
                 'model': model,
-                'year': year,
+                'year': self.extract_year_clean(year),
                 'price_krw': final_price_krw,
-                'engine_size': self.get_text(driver, ['.engine', '.engine-size', '.displacement', '.cc_info', '.displace', '.capacity'], '2000'),
-                'fuel_type': self.get_text(driver, ['.fuel', '.fuel-type', '.fuel_info', '.fuel_nm'], 'Gasoline'),
-                'mileage': self.get_text(driver, ['.mileage', '.odometer', '.mileage_info', '.km_info', '.mile'], '0'),
-                'transmission': self.get_text(driver, ['.transmission', '.gear_info', '.gear_nm'], 'Automatic'),
+                'engine_size': self.get_text(driver, ['.engine', '.cc_info', '.displace'], '2000'),
+                'fuel_type': self.get_text(driver, ['.fuel', '.fuel_info', '.fuel_nm'], 'Gasoline'),
+                'mileage': self.get_text(driver, ['.mileage', '.km_info', '.mile'], '0'),
+                'transmission': self.get_text(driver, ['.transmission', '.gear_info'], 'Automatic'),
                 'source': 'encar.com'
             }
             
-            # Очистка и валидация данных
+            # Чистка числовых данных
             car_data['engine_size'] = self.extract_numbers(car_data['engine_size'])
             car_data['mileage'] = self.extract_numbers(car_data['mileage'])
-            car_data['year'] = self.extract_year_clean(car_data['year'])
             
             return car_data
+            
+        except Exception as e:
+            logger.error(f"Error parsing encar: {e}")
+            return None
+        finally:
+            if driver:
+                driver.quit()
             
         except Exception as e:
             logger.error(f"Error parsing encar: {e}")
