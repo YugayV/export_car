@@ -1,33 +1,32 @@
-FROM python:3.9-slim
+# Используем стабильный образ Python
+FROM python:3.10-slim
 
-# Устанавливаем системные зависимости
+# Устанавливаем системные зависимости и Chrome без использования apt-key
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     unzip \
+    curl \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update && apt-get install -y \
+    google-chrome-stable \
+    --no-install-recommends \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем Chrome для Selenium
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
-    && apt-get update && apt-get install -y google-chrome-stable
-
-# Устанавливаем ChromeDriver
-RUN wget -O /tmp/chromedriver.zip https://chromedriver.storage.googleapis.com/LATEST_RELEASE \
-    && unzip /tmp/chromedriver.zip chromedriver -d /usr/local/bin/ \
-    && rm /tmp/chromedriver.zip
-
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копируем requirements и устанавливаем зависимости
+# Копируем зависимости и устанавливаем их
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем исходный код
+# Копируем все файлы проекта
 COPY . .
 
 # Создаем необходимые директории
-RUN mkdir -p data logs backups
+RUN mkdir -p logs data
 
 # Запускаем бота
 CMD ["python", "bot.py"]
